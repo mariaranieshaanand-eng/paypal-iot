@@ -1,0 +1,1363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PayPal IoT Smart Retail & Automated Checkout</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app-wrapper">
+    <!-- Top Store Banner -->
+    <div class="store-announcement-bar">
+      <div class="announcement-left">
+        <span class="pulse-green"></span>
+        <span><strong>PayPal Autonomous Micro-Store #104</strong> • Zero Cashier • Contact-Free Walk-Out</span>
+      </div>
+      <div class="announcement-right">
+        <span>🛡️ 100% Protected by PayPal Buyer Protection</span>
+      </div>
+    </div>
+
+    <!-- Portal Role Switcher -->
+    <div class="role-switcher-bar">
+      <div class="role-tabs">
+        <button id="btnRoleCustomer" class="role-tab-btn active" onclick="switchPortal('customer')">
+          <span class="role-icon">🛒</span>
+          <div>
+            <strong>Customer Self-Checkout Kiosk</strong>
+            <div class="role-sub">Shopper Entry, Barcode Scan & PayPal Auto-Pay</div>
+          </div>
+        </button>
+        <button id="btnRoleOwner" class="role-tab-btn" onclick="switchPortal('owner')">
+          <span class="role-icon">🔐</span>
+          <div>
+            <strong>Store Owner Management Portal</strong>
+            <div class="role-sub">Protected PIN (8899) • Stock, Analytics & Flash Discounts</div>
+          </div>
+          <span class="secure-tag" id="ownerLockStatus">🔒 LOCKED</span>
+        </button>
+      </div>
+
+      <div class="header-status">
+        <div class="hw-chip" id="esp32StatusChip">
+          <span class="hw-dot"></span>
+          <span>ESP32 Node: <strong id="esp32StatusText">HARDWARE LINKED & POLLING</strong></span>
+        </div>
+        <div class="audio-chip">
+          <span>🔊 Buzzer Synthesizer: <strong>ON</strong></span>
+        </div>
+        <button id="resetDemoBtn" class="btn btn-secondary btn-sm">↺ Reset Demo</button>
+      </div>
+    </div>
+
+    <!-- Customer Live Guidance Notification Toast / Banner -->
+    <div class="customer-notification-toast" id="customerNotifBanner">
+      <div class="toast-icon" id="notifIcon">💡</div>
+      <div class="toast-content">
+        <strong id="notifTitle">Welcome to PayPal Smart Retail</strong>
+        <span id="notifMessage">Scan your Pre-Booked Pass QR at the Entry Gate to begin shopping.</span>
+      </div>
+      <span class="toast-time" id="notifTime">Just Now</span>
+    </div>
+
+    <!-- Store Occupancy & Live Capacity Monitor Strip -->
+    <div class="store-occupancy-strip" id="storeOccupancyStrip">
+      <div class="occupancy-left">
+        <span class="occupancy-icon">👥</span>
+        <span class="occupancy-label">Store Shopper Capacity:</span>
+        <strong id="occupancyText">0 / 4 Shoppers (0%)</strong>
+        <span class="occupancy-status-badge badge-green" id="occupancyStatusBadge">🟢 Low Crowding • Normal Entry Open</span>
+      </div>
+      <div class="occupancy-right">
+        <div class="capacity-bar-track">
+          <div class="capacity-bar-fill" id="occupancyBarFill" style="width: 0%;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Active Anti-Theft Emergency Alert Banner (Flashes when alarm is triggered) -->
+    <div class="theft-emergency-banner" id="theftEmergencyBanner" style="display: none;">
+      <div class="theft-alert-content">
+        <span class="theft-siren-icon">🚨</span>
+        <div class="theft-text-box">
+          <strong id="theftBannerTitle">ANTI-THEFT ALARM TRIGGERED: SHOPLIFTING BREACH DETECTED!</strong>
+          <span id="theftBannerMessage">Attempted barrier crossing with unpaid cart items! Gate barrier deadbolted and siren sounding.</span>
+        </div>
+        <div class="theft-action-btns">
+          <button class="btn btn-warning btn-sm" onclick="promptPaypalForUnpaid()">💳 Settle via PayPal</button>
+          <button class="btn btn-secondary btn-sm" onclick="disarmSecurityAlarm()">🔕 Disarm Alarm</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- PORTAL 1: CUSTOMER SELF-CHECKOUT KIOSK                                -->
+    <!-- ===================================================================== -->
+    <div id="customerPortalContainer">
+      <!-- Navbar -->
+      <header class="navbar">
+        <div class="brand">
+          <div class="paypal-logo">
+            <span class="pp-p1">P</span><span class="pp-p2">P</span>
+          </div>
+          <div>
+            <h1>PayPal IoT Auto-Billing & Smart Gate</h1>
+            <span class="badge-tag">Customer Self-Checkout Stage • Contact-Free Walk-Out</span>
+          </div>
+        </div>
+
+        <div class="customer-quick-id">
+          <span class="c-id-lbl">Active Pass ID:</span>
+          <span class="c-id-val" id="topActivePassId">None (Awaiting Scan)</span>
+        </div>
+      </header>
+
+      <!-- Customer Navigation Tabs -->
+      <nav class="nav-tabs">
+        <button class="nav-tab active" data-tab="tab-store">🏪 Live Store & Smart Gates (Main Stage)</button>
+        <button class="nav-tab" data-tab="tab-booking">🎫 Step 1: Customer Pre-Booking & QR Generator</button>
+        <button class="nav-tab" data-tab="tab-barcodes">🏷️ Step 3: Printable Barcode Cards (For Demo)</button>
+        <button class="nav-tab" data-tab="tab-hardware">🔌 ESP32 Circuit & Hardware Pinout (No LCD)</button>
+      </nav>
+
+      <!-- Main Container -->
+      <main class="content-area">
+
+        <!-- TAB 1: MAIN STAGE (GUIDED STEP-BY-STEP CUSTOMER FLOW) -->
+        <div class="tab-pane active" id="tab-store" data-guided-step="entry">
+          
+          <!-- Guided Customer Journey Flow Tracker & View Switcher -->
+          <div class="customer-journey-tracker">
+            <div class="journey-steps">
+              <button class="journey-step-btn active" id="stepBtnEntry" onclick="setGuidedStep('entry')">
+                <span class="j-step-num">1</span>
+                <div class="j-step-info">
+                  <strong>🚪 Step 1: Entry Gate</strong>
+                  <span>Scan Pass QR</span>
+                </div>
+              </button>
+              <div class="j-arrow">➔</div>
+              <button class="journey-step-btn" id="stepBtnShopping" onclick="setGuidedStep('shopping')">
+                <span class="j-step-num">2</span>
+                <div class="j-step-info">
+                  <strong>🛒 Step 2: Store Shelf & Cart</strong>
+                  <span id="stepShoppingSub">Goods in Stock</span>
+                </div>
+              </button>
+              <div class="j-arrow">➔</div>
+              <button class="journey-step-btn" id="stepBtnExit" onclick="setGuidedStep('exit')">
+                <span class="j-step-num">3</span>
+                <div class="j-step-info">
+                  <strong>🏁 Step 3: Exit Barrier</strong>
+                  <span>PayPal Auto-Pay</span>
+                </div>
+              </button>
+              <div class="j-arrow">➔</div>
+              <button class="journey-step-btn" id="stepBtnReceipt" onclick="setGuidedStep('receipt')">
+                <span class="j-step-num">4</span>
+                <div class="j-step-info">
+                  <strong>🧾 Step 4: Tax Receipt</strong>
+                  <span>Done & Goodbye</span>
+                </div>
+              </button>
+            </div>
+
+            <div class="journey-view-toggle">
+              <button id="btnToggleGuidedMode" class="btn btn-sm btn-secondary" onclick="toggleViewLayoutMode()" title="Toggle between Step-by-Step Guided Mode and All-in-One View">
+                <span id="viewModeIcon">✨</span> <span id="viewModeLabel">Guided Mode (Active)</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- STAGE 1: ENTRY GATE ONLY (When customer is entering, goods shelf is hidden) -->
+          <div class="stage-container" id="stageEntryView">
+            <div class="guided-entry-card">
+              <div class="guided-stage-header">
+                <span class="guided-stage-badge">STEP 1 OF 3 • STORE ENTRANCE</span>
+                <h2>🚪 Welcome to PayPal Autonomous Micro-Store</h2>
+                <p>Please present your Pre-Booked Customer QR Pass or scan with camera to unlock the entry gate barrier.</p>
+              </div>
+
+              <!-- Entry Gate Status Widget -->
+              <div class="gate-widget entry-expanded-widget" id="entryGateWidget">
+                <div class="gate-header">
+                  <div class="gate-title">
+                    <span class="gate-icon" id="entryGateIcon">🚪</span>
+                    <div>
+                      <strong>ENTRY GATE BARRIER</strong>
+                      <div class="gate-sub" id="entryGateSub">Magnetic Lock: Engaged (Locked)</div>
+                    </div>
+                  </div>
+                  <span class="gate-badge closed" id="entryGateBadge">CLOSED</span>
+                </div>
+                <p class="micro-text">Show your digital pass QR code to the entrance sensor or camera:</p>
+                <div class="scan-input-group">
+                  <input type="text" id="entryQrInput" placeholder="Enter / Scan QR (e.g. PP-BOOK-1001)" value="PP-BOOK-1001">
+                  <button id="btnScanEntry" class="btn btn-primary btn-sm">Scan QR & Open Gate</button>
+                  <button id="btnOpenEntryCam" class="btn btn-camera btn-sm" onclick="openCameraScanner('ENTRY_PASS')">📷 Scan with Camera</button>
+                </div>
+                <div class="sample-pills">
+                  <span>Quick Select Customer Pass:</span>
+                  <button class="pill-btn" onclick="setEntryQr('PP-BOOK-1001')">Alex Rivera (VIP Platinum)</button>
+                  <button class="pill-btn" onclick="setEntryQr('PP-BOOK-1002')">Samira Khan (Gold)</button>
+                  <button class="pill-btn" onclick="setEntryQr('PP-BOOK-1003')">Jordan Smith (Silver)</button>
+                </div>
+                <div class="entry-card-footer">
+                  <span>🎫 Don't have a pass? <a href="javascript:void(0)" onclick="document.querySelector('[data-tab=\'tab-booking\']').click()" style="color:var(--pp-blue); font-weight:700;">Pre-Book a Slot & Get QR Code</a></span>
+                  <span class="micro-text" style="color:#64748b;">⚡ Contact-free walk-out retail powered by PayPal & ESP32 IoT</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- STAGE 2: IN-STORE SHOPPING FLOOR (Goods in Stock Shelf, Barcode Scanner & Active Cart) -->
+          <div class="stage-container" id="stageShoppingView" style="display: none;">
+            <!-- Active Shopper Greeting Banner -->
+            <div class="shopping-welcome-banner">
+              <div class="shopper-welcome-left">
+                <span class="welcome-avatar" id="shoppingWelcomeAvatar">👤</span>
+                <div>
+                  <div class="welcome-name" id="shoppingWelcomeName">Welcome inside, Alex Rivera! (VIP Platinum)</div>
+                  <span class="welcome-sub">🚪 Entry barrier unlocked and safely secured behind you. Pick products from shelves and scan barcodes below.</span>
+                </div>
+              </div>
+              <button class="btn btn-secondary btn-sm" onclick="setGuidedStep('entry')" title="Allow another customer to scan pass at Entry Gate">➕ Admit Another Customer at Gate</button>
+            </div>
+
+            <div class="grid-2col-shopping">
+              <!-- COLUMN 1: SHOPPING FLOOR & BARCODE SCANNER -->
+              <section class="card col-scanner">
+                <div class="card-header">
+                  <h2><span class="step-num">2</span> Goods in Stock Shelf & Scanner</h2>
+                  <div class="flash-sale-indicator" id="activeDiscountsBanner">
+                    <span class="live-flash-dot"></span>
+                    <span>⚡ Flash Discounts Active</span>
+                  </div>
+                </div>
+                <div class="card-body">
+                  <p class="section-desc">Shopper picks products from the shelf and scans the barcode. Buzzer chirps and items link directly to their customer session.</p>
+
+                  <!-- Target Shopper Bar for Multi-Shoppers -->
+                  <div class="scanner-shopper-indicator">
+                    <div class="scan-target-left">
+                      <span class="scan-target-icon">🛒</span>
+                      <span class="scan-target-lbl">Scanning Items For:</span>
+                    </div>
+                    <select id="scannerShopperSelect" class="shopper-select-dropdown" onchange="onScannerShopperChanged(this.value)">
+                      <option value="">Awaiting customer entry at Gate...</option>
+                    </select>
+                  </div>
+
+                  <!-- Scan Mode Toggle & Camera Scanner Trigger -->
+                  <div class="mode-toggles">
+                    <button id="modeAddBtn" class="toggle-btn active">➕ ADD Item Mode</button>
+                    <button id="modeRemoveBtn" class="toggle-btn">➖ REMOVE Item Mode</button>
+                    <button id="btnOpenBarcodeCam" class="toggle-btn btn-cam-toggle" onclick="openCameraScanner('PRODUCT_BARCODE')">📷 Open Camera Scanner</button>
+                  </div>
+
+                  <!-- Manual / Barcode Gun Input -->
+                  <div class="barcode-input-bar">
+                    <input type="text" id="manualBarcodeInput" placeholder="Scan or type barcode (e.g. 8901030382912)" autofocus>
+                    <button id="btnSubmitBarcode" class="btn btn-secondary">Scan</button>
+                  </div>
+
+                  <!-- Quick Click Product Shelf (Simulates scanning physical items) -->
+                  <div class="shelf-title">Select Item to Simulate Barcode Scan:</div>
+                  <div class="product-shelf-grid" id="productShelfGrid">
+                    <!-- Injected via JavaScript with flash discount badges & stock pills -->
+                  </div>
+                </div>
+              </section>
+
+              <!-- COLUMN 2: CUSTOMER'S ACTIVE BILL & CHECKOUT CALL TO ACTION -->
+              <section class="card col-bill">
+                <div class="card-header">
+                  <h2><span class="step-num">3</span> Active Customer Bill</h2>
+                  <span class="tag-live" id="activeCustomerTag">NO ACTIVE USER</span>
+                </div>
+                <div class="card-body">
+                  
+                  <!-- Multi-Shoppers In-Store Selector Tabs -->
+                  <div class="in-store-shoppers-box" id="inStoreShoppersBox">
+                    <div class="shoppers-box-top">
+                      <span>👥 Shoppers In Store: <strong id="inStoreCount">0</strong></span>
+                      <span class="micro-text">Click tab to switch active bill view</span>
+                    </div>
+                    <div class="shoppers-pill-list" id="shoppersPillList">
+                      <span class="no-shoppers-txt">Store is currently empty. Scan QR at Entry Gate.</span>
+                    </div>
+                  </div>
+
+                  <!-- Customer Recognition Profile Card -->
+                  <div class="customer-profile-bar" id="custProfileBar">
+                    <div class="c-avatar" id="custAvatar">👤</div>
+                    <div class="c-info">
+                      <div class="c-name-row">
+                        <div class="c-name" id="custNameDisplay">No Shopper In Store</div>
+                        <span class="vip-badge" id="custTierBadge" style="display:none;">Silver Member</span>
+                      </div>
+                      <div class="c-meta" id="custMetaDisplay">Scan Pre-Booked QR at Entry Gate to begin</div>
+                      <div class="c-loyalty-row" id="custLoyaltyRow" style="display:none;">
+                        <span>Total Visits: <strong id="custVisitCount">0</strong></span>
+                        <span>Total Spent: <strong id="custTotalSpent">$0.00</strong></span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Live Bill Items Table -->
+                  <div class="bill-table-container">
+                    <div class="bill-table-head">
+                      <span>Product & Barcode</span>
+                      <span>Qty</span>
+                      <span>Price</span>
+                      <span>Total</span>
+                    </div>
+                    <div class="bill-table-body" id="billTableBody">
+                      <div class="bill-empty">
+                        <div class="empty-icon">🛍️</div>
+                        <p>No items in cart</p>
+                        <span class="micro-text">Scan product barcodes in Step 2 to add to this bill.</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Pricing Calculation Breakdown -->
+                  <div class="bill-calculation">
+                    <div class="calc-row">
+                      <span>Subtotal:</span>
+                      <span id="billSubtotal">$0.00</span>
+                    </div>
+                    <div class="calc-row">
+                      <span>Sales Tax (8%):</span>
+                      <span id="billTax">$0.00</span>
+                    </div>
+                    <div class="calc-row promo-row" id="promoRow" style="display: none;">
+                      <span>PayPal Promo (> $30):</span>
+                      <span class="promo-text" id="billDiscount">-$0.00</span>
+                    </div>
+                    <div class="calc-row grand-total-row">
+                      <span>Grand Total:</span>
+                      <strong class="grand-total-val" id="billGrandTotal">$0.00</strong>
+                    </div>
+                  </div>
+
+                  <!-- Next Step: Proceed to Exit Barrier & Pay Button -->
+                  <div class="shopping-proceed-box">
+                    <button class="btn btn-paypal btn-lg full-width pulse-paypal" onclick="setGuidedStep('exit')">
+                      <span>🏁 Proceed to Exit Barrier & Pay via PayPal (<strong id="shoppingPayableTotal">$0.00</strong>) ➔</span>
+                    </button>
+                    <span class="micro-text" style="display:block; text-align:center; margin-top:6px; color:#64748b;">
+                      🛡️ Protected by PayPal Autonomous Retail Auto-Pay
+                    </span>
+                  </div>
+
+                </div>
+              </section>
+            </div>
+          </div>
+
+          <!-- STAGE 3: EXIT BARRIER & PAYPAL AUTO-PAY -->
+          <div class="stage-container" id="stageExitView" style="display: none;">
+            <div class="guided-exit-wrapper">
+              <div class="guided-stage-header">
+                <span class="guided-stage-badge">STEP 3 OF 3 • CHECKOUT & WALK-OUT</span>
+                <h2>🏁 Exit Barrier & PayPal One-Touch Auto-Pay</h2>
+                <p>Verify your total and trigger PayPal Auto-Pay to release the electromagnetic gate barrier!</p>
+              </div>
+
+              <div class="grid-2col-exit">
+                <!-- Exit Gate & PayPal Auto-Pay Widget -->
+                <div class="gate-widget exit-expanded-widget" id="exitGateWidget">
+                  <div class="gate-header">
+                    <div class="gate-title">
+                      <span class="gate-icon" id="exitGateIcon">🏁</span>
+                      <div>
+                        <strong>EXIT GATE BARRIER</strong>
+                        <div class="gate-sub" id="exitGateSub">Magnetic Lock: Engaged (Locked)</div>
+                      </div>
+                    </div>
+                    <span class="gate-badge closed" id="exitGateBadge">CLOSED</span>
+                  </div>
+                  <p class="micro-text">Select customer at exit barrier. PayPal automatically pays and opens the gate!</p>
+
+                  <div class="exit-shopper-picker">
+                    <label for="exitShopperSelect" class="exit-picker-lbl">PAYING SHOPPER AT EXIT:</label>
+                    <select id="exitShopperSelect" class="shopper-select-dropdown" onchange="onExitShopperChanged(this.value)">
+                      <option value="">-- No Customers In Store --</option>
+                    </select>
+                  </div>
+
+                  <div class="paypal-checkout-box">
+                    <div class="paypal-branding">
+                      <span class="pp-txt">PayPal</span>
+                      <span class="autopay-tag">⚡ One-Touch Auto-Pay</span>
+                    </div>
+                    <div class="paypal-order-summary">
+                      <span id="exitPayableLabel">Payable Total:</span>
+                      <strong class="pp-price" id="exitPayablePrice">$0.00</strong>
+                    </div>
+                    <button id="btnExitPayPal" class="btn btn-paypal full-width pulse-paypal">
+                      <span>💳 Trigger PayPal Auto-Pay & Open Gate</span>
+                    </button>
+                    <!-- Anti-Theft Shoplifting Simulator for Judges -->
+                    <button id="btnSimulateTheft" class="btn btn-theft-test full-width" onclick="simulateShopliftingBreach()">
+                      <span>🚨 Test Anti-Theft Alarm (Simulate Shoplifting Barrier Breach)</span>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Hardware Signal Monitor -->
+                <div class="hardware-box">
+                  <div class="hw-title">ESP32 Hardware Monitor (Buzzer & Magnetic Lock)</div>
+                  <div class="hw-signals">
+                    <div class="signal-item">
+                      <span class="s-label">Buzzer Audio:</span>
+                      <span class="s-val" id="hwBuzzerText">IDLE</span>
+                    </div>
+                    <div class="signal-item">
+                      <span class="s-label">Gate Lock Status:</span>
+                      <span class="s-val" id="hwServoText">Locked (LED OFF)</span>
+                    </div>
+                  </div>
+                  <div class="hw-help-box" style="margin-top: 14px; font-size: 0.76rem; color: #64748b;">
+                    <div>💡 <strong>How Auto-Pay Works:</strong></div>
+                    <div>1. Solenoid lock holds gate securely closed while cart is active.</div>
+                    <div>2. PayPal Auto-Pay validates funds and authorizes transaction.</div>
+                    <div>3. ESP32 receives unlock trigger, plays Victory Chime, and illuminates Blue LED (GPIO 2).</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="exit-nav-back" style="margin-top: 14px; text-align: center;">
+                <button class="btn btn-secondary" onclick="setGuidedStep('shopping')">← Back to Goods Shelf (Add More Items)</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- STAGE 4: GOODBYE & TAX INVOICE RECEIPT (Goods Shelf is Hidden) -->
+          <div class="stage-container" id="stageReceiptView" style="display: none;">
+            <div class="goodbye-receipt-card">
+              <div class="goodbye-header">
+                <span class="goodbye-icon">👋</span>
+                <div>
+                  <h2 id="goodbyeCustomerTitle">Thank You for Shopping with Us!</h2>
+                  <span class="goodbye-sub" id="goodbyeCustomerSub">Payment verified via PayPal One-Touch Auto-Pay. Exit barrier unlocked and safely re-locked.</span>
+                </div>
+              </div>
+
+              <div class="goodbye-status-strip">
+                <span>🛡️ Store Goods Hidden • Gate Re-Locked • Tax Invoice Generated</span>
+              </div>
+
+              <!-- PayPal Instant Receipt View (Shows upon payment) -->
+              <div class="paypal-receipt-preview" id="paypalReceiptPreview" style="display: block;">
+                <div class="rcpt-banner">
+                  <div class="rcpt-check">✔</div>
+                  <div>
+                    <strong>PayPal Auto-Payment Verified!</strong>
+                    <div class="micro-text" id="rcptTxnId">TXN-00000000</div>
+                  </div>
+                </div>
+
+                <div class="receipt-dispatch-box">
+                  <span class="micro-text" style="font-weight: 700; color: #003087;">SEND EXECUTIVE DIGITAL RECEIPT:</span>
+                  <div class="dispatch-buttons">
+                    <button id="btnShareWhatsApp" class="btn btn-whatsapp btn-sm" title="Share via WhatsApp with emojis & itemized breakdown">
+                      <span>📱 WhatsApp</span>
+                    </button>
+                    <button id="btnShareEmail" class="btn btn-email btn-sm" title="Send itemized email receipt">
+                      <span>📧 Email</span>
+                    </button>
+                    <button id="btnShareSms" class="btn btn-sms btn-sm" title="Send SMS confirmation">
+                      <span>💬 SMS</span>
+                    </button>
+                  </div>
+                </div>
+
+                <button id="btnOpenPrintInvoice" class="btn btn-primary btn-sm full-width">🖨️ View & Print Official Tax Invoice</button>
+              </div>
+
+              <div class="goodbye-actions" style="margin-top: 16px;">
+                <button class="btn btn-primary btn-lg full-width" id="btnReturnToEntry" onclick="finishAndReturnToEntry()">
+                  <span>🚪 Next Shopper / Return to Entry Gate (<strong id="goodbyeCountdown">15s</strong>)</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Real-Time Activity Log Stream -->
+          <div class="log-panel">
+            <div class="log-panel-header">
+              <span>📡 IoT Event & PayPal API Telemetry</span>
+              <span class="log-count" id="logCount">Live Stream</span>
+            </div>
+            <div class="log-stream-box" id="logStreamBox">
+              <div class="log-line info">[INIT] PayPal IoT Auto-Billing Gateway started. Awaiting QR and Barcode scans...</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 2: STEP 1 - CUSTOMER PRE-BOOKING & QR GENERATOR -->
+        <div class="tab-pane" id="tab-booking">
+          <div class="booking-grid">
+            <div class="card">
+              <div class="card-header">
+                <h2>Step 1: Pre-Book Shopping Slot & Generate QR</h2>
+                <span class="tag-live">CUSTOMER PORTAL</span>
+              </div>
+              <div class="card-body">
+                <p class="section-desc">Before visiting the store, the shopper books their slot and links their PayPal account. A unique QR pass is generated and stored under their Customer ID.</p>
+                
+                <form id="bookingForm" class="booking-form" onsubmit="event.preventDefault(); submitBooking();">
+                  <div class="form-group">
+                    <label for="bName">Full Name:</label>
+                    <input type="text" id="bName" required placeholder="e.g. Jordan Smith" value="Jordan Smith">
+                  </div>
+                  <div class="form-group">
+                    <label for="bEmail">PayPal Account Email:</label>
+                    <input type="email" id="bEmail" required placeholder="e.g. jordan.smith@example.com" value="jordan.smith@example.com">
+                  </div>
+                  <div class="form-group">
+                    <label for="bPhone">Mobile Phone (for SMS Pass):</label>
+                    <input type="text" id="bPhone" placeholder="+1 555-0199" value="+1 555-0199">
+                  </div>
+                  <div class="form-group">
+                    <label for="bSlot">Preferred Time Slot:</label>
+                    <select id="bSlot">
+                      <option value="Today: 15:00 - 16:00">Today: 15:00 - 16:00 (Next Available)</option>
+                      <option value="Today: 16:00 - 17:00">Today: 16:00 - 17:00</option>
+                      <option value="Today: 17:00 - 18:00">Today: 17:00 - 18:00</option>
+                    </select>
+                  </div>
+                  <button type="submit" class="btn btn-primary full-width">Generate Pre-Booking & PayPal QR Pass</button>
+                </form>
+              </div>
+            </div>
+
+            <!-- Generated Pass Preview -->
+            <div class="card">
+              <div class="card-header">
+                <h2>Your PayPal Store Pass</h2>
+                <span class="tag-live">DIGITAL PASS</span>
+              </div>
+              <div class="card-body center-content">
+                <div class="digital-pass-card" id="digitalPassCard">
+                  <div class="pass-header">
+                    <div class="pass-brand">
+                      <span class="pp-txt">PayPal</span>
+                      <span class="pass-lbl">Express Pass</span>
+                    </div>
+                    <span class="pass-status">CONFIRMED</span>
+                  </div>
+                  <div class="pass-body">
+                    <div class="qr-canvas-wrapper" id="qrCanvasWrapper">
+                      <!-- SVG QR Code is dynamically drawn here -->
+                    </div>
+                    <div class="pass-id-text" id="passIdText">PP-BOOK-1001</div>
+                    <div class="pass-details">
+                      <div><span>Holder:</span> <strong id="passHolderText">Alex Rivera</strong></div>
+                      <div><span>Customer ID:</span> <strong id="passCustIdText">CUST-001</strong></div>
+                      <div><span>PayPal Email:</span> <code id="passEmailText">alex.buyer@example.com</code></div>
+                      <div><span>Slot:</span> <span id="passSlotText">Today: 14:30 - 15:30</span></div>
+                    </div>
+                  </div>
+                  <div class="pass-footer">
+                    <span>Present this QR Code to the Entry Gate Camera to unlock entrance</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 3: STEP 3 - PRINTABLE BARCODE CARDS -->
+        <div class="tab-pane" id="tab-barcodes">
+          <div class="card">
+            <div class="card-header">
+              <h2>Product Barcode Cards (For Hackathon Demonstration)</h2>
+              <button class="btn btn-secondary btn-sm" onclick="window.print()">🖨️ Print Sheet</button>
+            </div>
+            <div class="card-body">
+              <p class="section-desc">You can print these cards or show them on a phone screen. Hold them in front of a webcam or type their numbers to simulate scanning goods.</p>
+              <div class="barcode-cards-grid" id="printableBarcodeGrid">
+                <!-- Dynamically populated -->
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 4: ESP32 CIRCUIT & HARDWARE PINOUT (NO LCD, NO SERVO) -->
+        <div class="tab-pane" id="tab-hardware">
+          <div class="card">
+            <div class="card-header">
+              <h2>ESP32 Hardware Setup: Buzzer & Electronic Magnetic Lock (Zero Extra Hardware!)</h2>
+              <span class="tag-live">ARDUINO C++</span>
+            </div>
+            <div class="card-body">
+              <div class="hw-instruction-grid">
+                <div>
+                  <h3>Wiring Table: ESP32 to Buzzer & Magnetic Lock LED</h3>
+                  <p class="micro-text">No Servo SG90 or LCD required! Real retail security gates use <strong>Electromagnetic Solenoid Locks</strong>. The ESP32's onboard LED on <strong>GPIO 2</strong> indicates when the lock is released (Gate Open), paired with audio buzzer chimes on <strong>GPIO 14</strong>.</p>
+                  
+                  <table class="pin-table">
+                    <thead>
+                      <tr><th>Component</th><th>Pin</th><th>ESP32 GPIO</th><th>Description</th></tr>
+                    </thead>
+                    <tbody>
+                      <tr><td><strong>Active/Passive Buzzer</strong></td><td>VCC / (+) Longer Leg</td><td><strong>D14 (GPIO 14)</strong></td><td>Acoustic chime feedback for scans & gates</td></tr>
+                      <tr><td><strong>Active/Passive Buzzer</strong></td><td>GND / (-) Shorter Leg</td><td><strong>GND</strong></td><td>Ground</td></tr>
+                      <tr><td><strong>Gate Magnetic Lock</strong></td><td>Onboard Blue LED</td><td><strong>GPIO 2</strong></td><td>OFF = Locked, ON = Gate Unlocked / Released</td></tr>
+                    </tbody>
+                  </table>
+
+                  <div class="beeps-legend">
+                    <h4>🎵 Buzzer Audio Feedback Codes:</h4>
+                    <ul>
+                      <li><strong>1 Short Chirp (1800 Hz, 100ms):</strong> Barcode scanned & item added to bill.</li>
+                      <li><strong>2 Mid Beeps (1200 Hz):</strong> Entry Gate Opened (Customer validated).</li>
+                      <li><strong>3 High Victory Chimes (523Hz - 1046Hz):</strong> PayPal Auto-Payment Completed & Exit Gate Opened!</li>
+                      <li><strong>1 Long Low Buzz (500 Hz, 600ms):</strong> Invalid QR / Unrecognized Barcode.</li>
+                    </ul>
+                  </div>
+                </div>
+
+                <div>
+                  <h3>ESP32 Firmware Code Location</h3>
+                  <p class="micro-text">Open the file below in your Arduino IDE, enter your Wi-Fi name and password, and click Upload:</p>
+                  <div class="code-box-preview">
+                    <code>firmware/paypal_esp32_gate.ino</code>
+                  </div>
+                  <h4 style="margin-top: 14px;">How the ESP32 communicates:</h4>
+                  <ol class="hw-steps-list">
+                    <li>ESP32 connects to your Wi-Fi network.</li>
+                    <li>Polls the server endpoint <code>GET /api/esp32/poll</code> every 400ms.</li>
+                    <li>When a command arrives (e.g. <code>OPEN_ENTRY_GATE</code> or <code>BEEP_SCAN</code>), the ESP32 plays the buzzer tone and turns the GPIO 2 LED ON.</li>
+                    <li>After 4 seconds, the gate lock automatically resets to Locked (LED OFF).</li>
+                  </ol>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </main>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- PORTAL 2: SECURE STORE OWNER MANAGEMENT PORTAL                         -->
+    <!-- ===================================================================== -->
+    <div id="ownerPortalContainer" style="display: none;">
+      <!-- Owner Header -->
+      <header class="navbar owner-navbar">
+        <div class="brand">
+          <div class="paypal-logo">
+            <span class="pp-p1">P</span><span class="pp-p2">P</span>
+          </div>
+          <div>
+            <h1>Store Owner Management Portal</h1>
+            <span class="badge-tag owner-tag">Proprietor: Elena Vance • Store #104 • SAFE RESTRICTED ACCESS</span>
+          </div>
+        </div>
+
+        <div class="owner-controls">
+          <button id="btnOwnerAddProduct" class="btn btn-primary btn-sm" onclick="openAddProductModal()">➕ Add New Product</button>
+          <button class="btn btn-secondary btn-sm" onclick="refreshOwnerDashboard()">🔄 Refresh Metrics</button>
+          <button class="btn btn-danger btn-sm" onclick="ownerLogout()">🔒 Exit Owner Mode</button>
+        </div>
+      </header>
+
+      <!-- Owner KPI Cards -->
+      <div class="owner-kpi-grid">
+        <div class="kpi-card revenue-card">
+          <div class="kpi-icon">💰</div>
+          <div class="kpi-data">
+            <span class="kpi-lbl">Total Store Revenue</span>
+            <strong class="kpi-val" id="ownerKpiRevenue">$0.00</strong>
+            <span class="kpi-sub">PayPal Instant Settlements</span>
+          </div>
+        </div>
+
+        <div class="kpi-card orders-card">
+          <div class="kpi-icon">🧾</div>
+          <div class="kpi-data">
+            <span class="kpi-lbl">Completed Walk-Outs</span>
+            <strong class="kpi-val" id="ownerKpiOrders">0</strong>
+            <span class="kpi-sub">Zero-Cashier Orders</span>
+          </div>
+        </div>
+
+        <div class="kpi-card inventory-card">
+          <div class="kpi-icon">📦</div>
+          <div class="kpi-data">
+            <span class="kpi-lbl">Catalog Products</span>
+            <strong class="kpi-val" id="ownerKpiProducts">0</strong>
+            <span class="kpi-sub">Active Store Items</span>
+          </div>
+        </div>
+
+        <div class="kpi-card alert-card" id="ownerKpiLowStockCard">
+          <div class="kpi-icon">⚠️</div>
+          <div class="kpi-data">
+            <span class="kpi-lbl">Low Stock Alerts</span>
+            <strong class="kpi-val" id="ownerKpiLowStock">0</strong>
+            <span class="kpi-sub" id="ownerKpiLowStockSub">Items with stock &lt; 5</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Critical Low-Stock Warning Banner (Prominently shown when items < 5) -->
+      <div class="low-stock-alert-banner" id="lowStockAlertBanner" style="display: none;">
+        <div class="alert-banner-left">
+          <span class="alert-bell">🚨</span>
+          <div>
+            <strong>INVENTORY WARNING: LOW STOCK ALERT DETECTED!</strong>
+            <div id="lowStockAlertDetails">The following goods are running low (under 5 units). Please restock immediately:</div>
+          </div>
+        </div>
+        <button class="btn btn-warning btn-sm" onclick="scrollToInventory()">View Inventory Table</button>
+      </div>
+
+      <!-- Owner Live Shopper Monitor -->
+      <div class="card in-store-monitor-card" style="margin-top: 14px;">
+        <div class="card-header">
+          <h2>👥 Concurrent In-Store Shoppers Live Monitor</h2>
+          <span class="tag-live" id="ownerLiveShopperBadge">0 ACTIVE SHOPPERS</span>
+        </div>
+        <div class="card-body">
+          <p class="section-desc">Real-time status of all customers currently browsing the store floor with live basket values.</p>
+          <div class="table-responsive">
+            <table class="inventory-table">
+              <thead>
+                <tr>
+                  <th>Shopper Name & ID</th>
+                  <th>Booking Pass</th>
+                  <th>Loyalty Tier</th>
+                  <th>Entry Time</th>
+                  <th>Items in Cart</th>
+                  <th>Current Bill Total</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="ownerLiveShoppersTableBody">
+                <tr><td colspan="7" style="text-align:center; color:#94a3b8; padding:16px;">No customers currently inside the store.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Owner Visual Analytics: Sales Graph & Pie Chart -->
+      <div class="analytics-charts-grid">
+        <!-- Chart 1: Bar Chart of Top Selling vs Least Selling Goods -->
+        <div class="card chart-card">
+          <div class="card-header">
+            <h2>📊 Sales Performance: Best-Selling vs. Lowest-Selling Goods</h2>
+            <span class="tag-live">REAL-TIME GRAPH</span>
+          </div>
+          <div class="card-body">
+            <p class="section-desc">Identifies fast-moving inventory vs. slow-moving goods to guide discounts and purchasing decisions.</p>
+            <div class="chart-canvas-wrapper" id="salesBarChartWrapper">
+              <canvas id="salesBarChartCanvas" width="600" height="280"></canvas>
+            </div>
+            <div class="chart-legend" id="salesBarChartLegend">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Chart 2: Pie Chart of Category Breakdown -->
+        <div class="card chart-card">
+          <div class="card-header">
+            <h2>🥧 Category Revenue Distribution</h2>
+            <span class="tag-live">PIE CHART</span>
+          </div>
+          <div class="card-body">
+            <p class="section-desc">Breakdown of product volume sold across Beverages, Snacks, Produce, and Electronics.</p>
+            <div class="pie-chart-wrapper">
+              <canvas id="categoryPieChartCanvas" width="300" height="280"></canvas>
+              <div class="pie-legend" id="categoryPieLegend">
+                <!-- Dynamically populated -->
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Owner Section: Real-Time Store Inventory Management (Stock, Add, Delete, Flash Discounts) -->
+      <section class="card" id="inventorySection" style="margin-top: 16px;">
+        <div class="card-header">
+          <h2>📦 Store Inventory & Stock Quantity Monitor</h2>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-primary btn-sm" onclick="openAddProductModal()">➕ Add New Product</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <p class="section-desc">
+            Track remaining shelf stock, restock products, launch time-limited flash discounts, or delete discontinued items. Stock automatically decrements when customers exit.
+          </p>
+
+          <div class="table-responsive">
+            <table class="inventory-table">
+              <thead>
+                <tr>
+                  <th>Product & Barcode</th>
+                  <th>Category</th>
+                  <th>Shelf Stock</th>
+                  <th>Sales Count</th>
+                  <th>Current Price</th>
+                  <th>Flash Discount</th>
+                  <th>Owner Actions</th>
+                </tr>
+              </thead>
+              <tbody id="inventoryTableBody">
+                <!-- Injected via JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- Owner Section: Frequent Customers & VIP Loyalty Directory -->
+      <section class="card" style="margin-top: 16px; margin-bottom: 24px;">
+        <div class="card-header">
+          <h2>🌟 Frequent Customers & VIP Directory</h2>
+          <span class="tag-live">LOYALTY INTELLIGENCE</span>
+        </div>
+        <div class="card-body">
+          <p class="section-desc">
+            The system tracks repeat shoppers by their unique Customer ID, recording their visit frequency, total dollar spend, loyalty tier, and favorite items.
+          </p>
+
+          <div class="table-responsive">
+            <table class="inventory-table vip-table">
+              <thead>
+                <tr>
+                  <th>Customer ID & Pass</th>
+                  <th>Customer Name</th>
+                  <th>Loyalty Tier</th>
+                  <th>Visits</th>
+                  <th>Total Spent</th>
+                  <th>Favorite Item</th>
+                  <th>Last Visit</th>
+                </tr>
+              </thead>
+              <tbody id="frequentCustomersTableBody">
+                <!-- Injected via JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- Owner Section: Anti-Theft Security Incident Logs & Perimeter Control -->
+      <section class="card" style="margin-top: 16px; margin-bottom: 24px;">
+        <div class="card-header">
+          <h2>🛡️ Anti-Theft Security & Shoplifting Incident Logs</h2>
+          <div class="security-controls-right">
+            <span class="security-status-pill" id="ownerSecurityStatusPill">🟢 ALL PERIMETERS SECURE</span>
+            <button class="btn btn-secondary btn-sm" id="btnOwnerDisarmSecurity" onclick="disarmSecurityAlarm()" style="display:none;">🔕 Disarm & Clear Alarm</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="security-meta-bar">
+            <div class="meta-item">
+              <span>Max Store Capacity:</span>
+              <select id="ownerCapacitySelect" class="capacity-select" onchange="updateMaxCapacity(this.value)">
+                <option value="2">2 Shoppers</option>
+                <option value="3">3 Shoppers</option>
+                <option value="4" selected>4 Shoppers</option>
+                <option value="6">6 Shoppers</option>
+                <option value="10">10 Shoppers</option>
+              </select>
+            </div>
+            <div class="meta-item">
+              <span>Current Shoppers Inside:</span>
+              <strong id="ownerCurrentShopperCount">0</strong>
+            </div>
+            <div class="meta-item">
+              <span>Total Security Incidents:</span>
+              <strong id="ownerTotalIncidentsCount">0</strong>
+            </div>
+          </div>
+
+          <div class="table-responsive" style="margin-top: 12px;">
+            <table class="inventory-table security-table">
+              <thead>
+                <tr>
+                  <th>Incident ID & Time</th>
+                  <th>Customer / Subject</th>
+                  <th>Security Reason</th>
+                  <th>Intercepted Unpaid Items</th>
+                  <th>Value</th>
+                  <th>Hardware Action</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="securityLogsTableBody">
+                <!-- Injected via JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- MODALS                                                                -->
+  <!-- ===================================================================== -->
+
+  <!-- MODAL 0: OWNER PIN AUTHENTICATION DIALOG (SAFE ACCESS: PIN 8899) -->
+  <div class="modal-overlay" id="ownerPinModalOverlay" style="display: none;">
+    <div class="standard-modal-card pin-modal-card">
+      <div class="modal-card-header">
+        <div class="pin-header-brand">
+          <span class="pin-shield">🛡️</span>
+          <div>
+            <h3>Shop Owner Secure Authentication</h3>
+            <span class="micro-text" style="color: var(--pp-navy);">Restricted Management Clearance</span>
+          </div>
+        </div>
+        <button class="close-modal-btn" onclick="closeOwnerPinModal()">&times;</button>
+      </div>
+      <div class="modal-card-body">
+        <p class="micro-text" style="margin-bottom: 14px;">
+          Only the authorized store proprietor has access to add or delete goods, set discounts, and view revenue analytics.
+        </p>
+
+        <form id="ownerPinForm" onsubmit="event.preventDefault(); submitOwnerPin();">
+          <div class="form-group">
+            <label for="ownerPinInput">Enter 4-Digit Owner Security PIN:</label>
+            <input type="password" id="ownerPinInput" maxlength="6" required placeholder="••••" autocomplete="off" autofocus>
+            <span class="pin-demo-hint">Demo PIN: <strong>8899</strong></span>
+          </div>
+          <div class="pin-error-msg" id="pinErrorMsg" style="display: none;">
+            ⚠️ Incorrect PIN! Please enter 8899.
+          </div>
+          <div class="pin-action-row" style="margin-top: 14px; display: flex; gap: 8px;">
+            <button type="submit" class="btn btn-primary full-width">Unlock Store Owner Portal</button>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="closeOwnerPinModal()">Cancel</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 1: AUTHENTIC PAYPAL CHECKOUT DIALOG -->
+  <div class="modal-overlay" id="paypalModalOverlay" style="display: none;">
+    <div class="paypal-modal-card">
+      <div class="pp-modal-header">
+        <div class="pp-modal-brand">
+          <span class="pp-p1">P</span><span class="pp-p2">P</span>
+          <span class="pp-modal-title">PayPal Checkout</span>
+        </div>
+        <div class="pp-secure-badge">🔒 256-Bit SSL Encrypted</div>
+      </div>
+
+      <div class="pp-modal-body">
+        <div class="pp-user-box">
+          <div class="pp-avatar">👤</div>
+          <div>
+            <div class="pp-user-name" id="ppModalUserName">Jordan Smith</div>
+            <div class="pp-user-email" id="ppModalUserEmail">jordan.smith@example.com</div>
+          </div>
+          <span class="pp-verified-badge">VERIFIED BUYER</span>
+        </div>
+
+        <div class="pp-funding-section">
+          <div class="pp-funding-title">Select PayPal Payment Method:</div>
+          
+          <label class="pp-funding-option selected">
+            <input type="radio" name="ppFundingSource" value="BALANCE" checked>
+            <div class="option-details">
+              <span class="opt-name">🔵 PayPal Balance</span>
+              <span class="opt-sub">Available: $450.00 USD</span>
+            </div>
+            <span class="opt-badge">INSTANT</span>
+          </label>
+
+          <label class="pp-funding-option">
+            <input type="radio" name="ppFundingSource" value="CARD">
+            <div class="option-details">
+              <span class="opt-name">💳 Chase Sapphire Visa (•••• 8821)</span>
+              <span class="opt-sub">Backup funding source</span>
+            </div>
+          </label>
+
+          <label class="pp-funding-option">
+            <input type="radio" name="ppFundingSource" value="PAY_IN_4">
+            <div class="option-details">
+              <span class="opt-name">⚡ Pay in 4</span>
+              <span class="opt-sub">4 interest-free payments (No fees)</span>
+            </div>
+            <span class="opt-badge gold">0% APR</span>
+          </label>
+        </div>
+
+        <div class="pp-order-review">
+          <div class="rev-row"><span>Items Subtotal:</span><span id="ppModalSubtotal">$0.00</span></div>
+          <div class="rev-row"><span>Estimated Tax (8%):</span><span id="ppModalTax">$0.00</span></div>
+          <div class="rev-row pp-discount-row" id="ppModalDiscountRow" style="display: none;">
+            <span>PayPal Promo Discount:</span><span id="ppModalDiscount">-$0.00</span>
+          </div>
+          <div class="rev-row rev-total"><span>Total Payable:</span><strong id="ppModalTotal">$0.00</strong></div>
+        </div>
+
+        <div class="pp-modal-actions">
+          <button id="btnConfirmPayPalPay" class="btn btn-paypal full-width pp-large-btn">
+            <span id="ppPayBtnText">Pay Now & Unlock Exit Gate</span>
+            <span class="pp-spinner" id="ppPaySpinner" style="display: none;"></span>
+          </button>
+          <button id="btnClosePayPalModal" class="btn btn-secondary full-width btn-sm">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 2: ADD CUSTOM PRODUCT & PRICE (OWNER EXCLUSIVE) -->
+  <div class="modal-overlay" id="addProductModalOverlay" style="display: none;">
+    <div class="standard-modal-card">
+      <div class="modal-card-header">
+        <h3>➕ Add Custom Product & Barcode</h3>
+        <button class="close-modal-btn" onclick="closeAddProductModal()">&times;</button>
+      </div>
+      <div class="modal-card-body">
+        <p class="micro-text" style="margin-bottom: 12px;">Add snacks, electronics, or goods to the store inventory catalog.</p>
+        
+        <form id="customProductForm" onsubmit="event.preventDefault(); submitCustomProduct();">
+          <div class="form-group">
+            <label>Product Name:</label>
+            <input type="text" id="cpName" required placeholder="e.g. Monster Energy Zero (500ml)" value="Monster Energy Zero Ultra">
+          </div>
+          <div class="form-row-2">
+            <div class="form-group">
+              <label>Price ($ USD):</label>
+              <input type="number" id="cpPrice" step="0.01" required placeholder="3.50" value="3.50">
+            </div>
+            <div class="form-group">
+              <label>Emoji Icon:</label>
+              <input type="text" id="cpIcon" maxlength="2" required placeholder="⚡" value="⚡">
+            </div>
+          </div>
+          <div class="form-row-2">
+            <div class="form-group">
+              <label>Category:</label>
+              <select id="cpCategory">
+                <option value="Beverages">Beverages</option>
+                <option value="Snacks">Snacks</option>
+                <option value="Electronics">Electronics</option>
+                <option value="Produce">Produce</option>
+                <option value="Dry Fruits">Dry Fruits</option>
+                <option value="General">General Merchandise</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Initial Shelf Stock:</label>
+              <input type="number" id="cpStock" min="1" max="100" required value="15">
+            </div>
+          </div>
+          <div class="form-group">
+            <div style="display: flex; justify-content: space-between;">
+              <label>Barcode / Tag Code:</label>
+              <button type="button" class="link-btn" onclick="generateRandomBarcode()">🎲 Random Code</button>
+            </div>
+            <input type="text" id="cpBarcode" required placeholder="e.g. 8909988776655" value="8909988776655">
+          </div>
+          
+          <button type="submit" class="btn btn-primary full-width" style="margin-top: 10px;">Save Product to Store Shelf</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 3: TIME-LIMITED FLASH DISCOUNT MANAGER (OWNER EXCLUSIVE) -->
+  <div class="modal-overlay" id="discountModalOverlay" style="display: none;">
+    <div class="standard-modal-card">
+      <div class="modal-card-header">
+        <h3>⚡ Set Time-Limited Flash Discount</h3>
+        <button class="close-modal-btn" onclick="closeDiscountModal()">&times;</button>
+      </div>
+      <div class="modal-card-body">
+        <p class="micro-text" style="margin-bottom: 12px;">
+          Apply a promotional discount percentage to boost sales. A live countdown timer will appear on the shelf!
+        </p>
+
+        <form id="flashDiscountForm" onsubmit="event.preventDefault(); submitFlashDiscount();">
+          <input type="hidden" id="discountBarcode">
+          <div class="form-group">
+            <label>Selected Product:</label>
+            <input type="text" id="discountProductName" readonly style="background: #f1f5f9; font-weight: 700;">
+          </div>
+          <div class="form-row-2">
+            <div class="form-group">
+              <label>Discount Percentage (%):</label>
+              <select id="discountPercentSelect">
+                <option value="10">10% OFF</option>
+                <option value="15" selected>15% OFF</option>
+                <option value="20">20% OFF</option>
+                <option value="25">25% OFF</option>
+                <option value="30">30% OFF</option>
+                <option value="0">Remove Discount (0%)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Duration:</label>
+              <select id="discountDurationSelect">
+                <option value="15">15 Minutes</option>
+                <option value="30">30 Minutes</option>
+                <option value="60" selected>1 Hour (60 Mins)</option>
+                <option value="120">2 Hours (120 Mins)</option>
+                <option value="1440">24 Hours (Full Day)</option>
+              </select>
+            </div>
+          </div>
+
+          <button type="submit" class="btn btn-primary full-width" style="margin-top: 12px;">Activate Flash Discount</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 4: OFFICIAL PRINTABLE TAX INVOICE -->
+  <div class="modal-overlay" id="taxInvoiceModalOverlay" style="display: none;">
+    <div class="tax-invoice-dialog">
+      <div class="invoice-dialog-topbar no-print">
+        <div class="topbar-info">
+          <strong>Official Tax Invoice & PayPal Receipt</strong>
+          <span class="invoice-status-pill">PAID & VERIFIED</span>
+        </div>
+        <div class="topbar-buttons">
+          <button class="btn btn-primary btn-sm" onclick="triggerActualPrint()">🖨️ Print Invoice</button>
+          <button class="close-modal-btn" id="btnCloseTaxInvoice">&times;</button>
+        </div>
+      </div>
+
+      <!-- Printable Invoice Sheet (Only this section prints on paper) -->
+      <div class="printable-invoice-sheet" id="printableInvoiceSheet">
+        <div class="invoice-brand-header">
+          <div class="invoice-logo">
+            <span class="pp-p1">P</span><span class="pp-p2">P</span>
+            <div>
+              <div class="inv-store-title">PAYPAL SMART STORE</div>
+              <div class="inv-store-sub">Autonomous Retail Micro-Store #104</div>
+            </div>
+          </div>
+          <div class="invoice-tax-meta">
+            <div><strong>TAX INVOICE</strong></div>
+            <div id="invNumberText">INV-849201</div>
+            <div class="inv-tax-sub" id="invDateTimeText">07-Nov-2026 14:30 PM</div>
+          </div>
+        </div>
+
+        <div class="inv-divider-thick"></div>
+
+        <div class="inv-customer-grid">
+          <div>
+            <div class="inv-label">BILLED TO:</div>
+            <div class="inv-val-bold" id="invCustomerName">Jordan Smith</div>
+            <div class="inv-val-sub" id="invCustomerEmail">jordan.smith@example.com</div>
+            <div class="inv-val-sub" id="invCustomerPhone">+1 555-0199</div>
+          </div>
+          <div style="text-align: right;">
+            <div class="inv-label">TRANSACTION AUTH:</div>
+            <div class="inv-val-bold" id="invTxnId">PAYPAL-TXN-82914728X</div>
+            <div class="inv-val-sub">Customer ID: <strong id="invCustomerId">CUST-001</strong></div>
+            <div class="inv-val-sub">Pass ID: <strong id="invBookingId">PP-BOOK-1001</strong></div>
+            <div class="inv-val-sub">Status: <span class="inv-paid-tag">PAID VIA PAYPAL AUTO-PAY</span></div>
+          </div>
+        </div>
+
+        <div class="inv-items-table">
+          <div class="inv-table-head">
+            <span>Item Description</span>
+            <span style="text-align:center;">Qty</span>
+            <span style="text-align:right;">Unit Price</span>
+            <span style="text-align:right;">Total</span>
+          </div>
+          <div class="inv-table-rows" id="invItemsTableRows">
+            <!-- Dynamically populated from actual invoice data -->
+          </div>
+        </div>
+
+        <div class="inv-summary-section">
+          <div class="inv-summary-box">
+            <div class="inv-sum-row">
+              <span>Items Subtotal:</span>
+              <span id="invSubtotal">$0.00</span>
+            </div>
+            <div class="inv-sum-row">
+              <span>State Sales Tax (8.0%):</span>
+              <span id="invTax">$0.00</span>
+            </div>
+            <div class="inv-sum-row inv-discount-row" id="invDiscountRow" style="display: none;">
+              <span>PayPal Smart Store Promo Discount:</span>
+              <span id="invDiscount">-$0.00</span>
+            </div>
+            <div class="inv-sum-row inv-grand-row">
+              <span>TOTAL PAID (USD):</span>
+              <span id="invGrandTotal">$0.00</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="inv-divider"></div>
+
+        <div class="inv-footer-barcode">
+          <div class="inv-barcode-bars" id="invBarcodeGraphic">||| | ||||| || |||| ||| |||| | |||</div>
+          <div class="inv-barcode-text" id="invBarcodeNumber">TXN-000000000000</div>
+          <div class="inv-legal">This document is an electronic tax invoice generated by PayPal IoT Autonomous Checkout Gateway. Gate barrier unlocked upon cryptographic payment settlement.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 5: DISPATCH PREVIEW DIALOG (WHATSAPP, EMAIL, SMS) -->
+  <div class="modal-overlay" id="dispatchPreviewModalOverlay" style="display: none;">
+    <div class="standard-modal-card">
+      <div class="modal-card-header">
+        <h3 id="dispatchModalTitle">📱 Digital Receipt Dispatch</h3>
+        <button class="close-modal-btn" id="btnCloseDispatchPreview">&times;</button>
+      </div>
+      <div class="modal-card-body">
+        <div class="dispatch-preview-banner" id="dispatchBannerText">
+          Review the executive receipt format before dispatching:
+        </div>
+        
+        <div class="dispatch-text-box" id="dispatchTextPreview">
+          <!-- Populated with rich text -->
+        </div>
+
+        <div class="dispatch-action-row" style="margin-top: 14px; display: flex; gap: 8px;">
+          <button id="btnExecuteDispatch" class="btn btn-whatsapp full-width">Send Message</button>
+          <button id="btnCopyDispatchText" class="btn btn-secondary btn-sm" onclick="copyDispatchText()">📋 Copy Text</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 6: LIVE WEBCAM & PHONE CAMERA OPTICAL SCANNER -->
+  <div class="modal-overlay" id="cameraScannerModalOverlay" style="display: none;">
+    <div class="standard-modal-card camera-scanner-card">
+      <div class="modal-card-header">
+        <div class="cam-header-left">
+          <span class="cam-icon">📷</span>
+          <div>
+            <h3>Live Optical Barcode & QR Scanner</h3>
+            <span class="cam-sub-mode" id="cameraModeLabel">Target: Product Barcode Scanner</span>
+          </div>
+        </div>
+        <button class="close-modal-btn" onclick="closeCameraScanner()">&times;</button>
+      </div>
+      <div class="modal-card-body">
+        
+        <!-- Live Camera Viewport Box -->
+        <div class="camera-viewport-box">
+          <video id="scannerVideo" autoplay playsinline muted></video>
+          <canvas id="scannerCanvas" style="display: none;"></canvas>
+          
+          <!-- Viewfinder HUD / Reticle & Animated Laser Scanline -->
+          <div class="scanner-hud">
+            <div class="scanner-reticle tl"></div>
+            <div class="scanner-reticle tr"></div>
+            <div class="scanner-reticle bl"></div>
+            <div class="scanner-reticle br"></div>
+            <div class="scanner-laser-line"></div>
+            <div class="scanner-guidance-pill" id="scannerGuidanceText">
+              Align barcode or customer pass QR within the frame
+            </div>
+          </div>
+
+          <!-- Camera Loading / Permission Placeholder -->
+          <div class="camera-placeholder" id="cameraLoadingIndicator">
+            <div class="cam-spinner"></div>
+            <span id="cameraStatusMsg">Initializing Camera Feed...</span>
+            <small class="micro-text">Please allow camera permissions if prompted</small>
+          </div>
+        </div>
+
+        <!-- Camera Controls Toolbar -->
+        <div class="camera-controls-bar">
+          <div class="cam-btn-group">
+            <button class="btn btn-secondary btn-sm" id="btnSwitchCamera" onclick="switchCameraFacing()">🔄 Switch Camera</button>
+            <button class="btn btn-secondary btn-sm" id="btnScanModeToggle" onclick="toggleScannerMode()">🎯 Switch Mode (Pass/Item)</button>
+          </div>
+          <div class="cam-target-shopper" id="camTargetShopperDisplay">
+            Target Shopper: <strong>Alex Rivera</strong>
+          </div>
+        </div>
+
+        <!-- Detected Scan Instant Feedback Toast -->
+        <div class="camera-detection-toast" id="camDetectionToast" style="display:none;">
+          <span class="cam-det-icon">✅</span>
+          <span id="camDetectionMsg">Item Scanned!</span>
+        </div>
+
+        <!-- Quick 1-Tap Target Strip for Demo Presentations (Instant fallback) -->
+        <div class="camera-quick-targets">
+          <span class="quick-target-title">Quick-Tap Direct Scan Simulation (In View):</span>
+          <div class="quick-target-pills" id="cameraTargetPills">
+            <!-- Dynamically populated based on mode -->
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 7: ANTI-THEFT EMERGENCY LOCKDOWN ALERT MODAL -->
+  <div class="modal-overlay" id="antiTheftModalOverlay" style="display: none;">
+    <div class="theft-modal-card">
+      <div class="theft-modal-header">
+        <span class="theft-modal-siren">🚨</span>
+        <div>
+          <h2>SECURITY LOCKDOWN ACTIVE</h2>
+          <span class="theft-sub">Anti-Theft Optical Barrier • Shoplifting Breach Intercepted</span>
+        </div>
+      </div>
+      <div class="theft-modal-body">
+        <div class="theft-badge-row">
+          <span class="theft-badge-item">🔒 Solenoid Lock: DEADBOLTED</span>
+          <span class="theft-badge-item">🔊 Buzzer Siren: ACTIVE (900-1300Hz)</span>
+          <span class="theft-badge-item">📸 Security Incident: LOGGED</span>
+        </div>
+
+        <div class="theft-details-box">
+          <div class="theft-row">
+            <span>Subject Identified:</span>
+            <strong id="theftSubjectName">Alex Rivera (PP-BOOK-1001)</strong>
+          </div>
+          <div class="theft-row">
+            <span>Breach Nature:</span>
+            <span class="text-danger" id="theftReasonText">Attempted Exit Barrier Crossing with Unpaid Cart Goods</span>
+          </div>
+          <div class="theft-row">
+            <span>Total Unpaid Amount:</span>
+            <strong class="theft-unpaid-price" id="theftUnpaidAmount">$0.00 USD</strong>
+          </div>
+          
+          <div class="theft-items-list" id="theftItemsContainer">
+            <!-- Populated with unpaid items -->
+          </div>
+        </div>
+
+        <div class="theft-modal-actions">
+          <button class="btn btn-paypal btn-lg full-width" onclick="resolveTheftWithPayPal()">
+            💳 Settle Bill via PayPal Auto-Pay & Open Gate
+          </button>
+          <button class="btn btn-secondary full-width" onclick="disarmSecurityAlarm()">
+            🔕 Store Owner Override (Disarm Siren & Clear Lockdown)
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

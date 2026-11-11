@@ -1,0 +1,20 @@
+{
+  "name": "paypal-iot-autonomous-retail",
+  "version": "1.0.0",
+  "description": "Autonomous Micro-Retail & Auto-Billing System with Customer Recognition, Real-Time Inventory, Dynamic Discounts, and ESP32 Smart Gate Barrier for PayPal Hackathon 2026",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node simulation/verify_camera_occupancy_security.js && node simulation/verify_multi_customer_flow.js && node simulation/verify_owner_and_customer_portals.js"
+  },
+  "keywords": [
+    "paypal",
+    "iot",
+    "esp32",
+    "retail",
+    "autonomous-checkout",
+    "hackathon"
+  ],
+  "author": "PayPal Hackathon Team",
+  "license": "MIT"
+}
