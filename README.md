@@ -5,6 +5,20 @@
 
 ---
 
+## 💳 How PayPal is Integrated (Sandbox Environment)
+- **PayPal Orders & Checkout REST API (Sandbox):** Manages dynamic order pricing (items, promotions, sales tax) and generates instant One-Touch auto-settlements (`PAYPAL-TXN-xxxx`).
+- **Cryptographic Gate Verification:** The physical ESP32 electromagnetic gate barrier is held locked and only receives the unlock pulse after receiving verified payment settlement confirmation.
+- **PayPal Invoicing & Identity:** Links customer accounts (`PAYPAL-ACC-88219`) to their shopping history and generates official non-zero tax invoices with multi-channel receipts (WhatsApp, Email, SMS).
+
+---
+
+## 🤖 How AI is Integrated
+- **Edge Optical Computer Vision & Barcode Detection Model (`BarcodeDetector` API):** Processes camera feeds in real time to recognize product barcodes and QR customer passes with laser targeting HUD, removing the need for physical scanners.
+- **Predictive Sales Velocity & Inventory Intelligence:** Algorithmic retail engine that classifies fast-moving vs. slow-moving stock, flags low-stock warnings (`< 5` units), and generates dynamic flash discounts (10% to 30%) with countdown timers.
+- **Antigravity Agentic AI Platform:** Used to design and orchestrate real-time state synchronization across the Node.js backend, client kiosks, and ESP32 embedded C++ firmware.
+
+---
+
 ## 🌟 Key System Capabilities
 
 ### 1. 🛒 Customer Self-Checkout Kiosk
@@ -53,10 +67,11 @@
 
 ---
 
-## ⚡ Quickstart
+## ⚡ Quickstart Setup Instructions
 
 ### 1. Launch Server
-Double-click [`start_server.bat`](file:///C:/Users/maria/.gemini/antigravity/scratch/paypal_iot_checkout/start_server.bat).  
+- **Windows**: Double-click [`start_server.bat`](file:///C:/Users/maria/.gemini/antigravity/scratch/paypal_iot_checkout/start_server.bat).  
+- **Mac / Linux / Terminal**: Run `node server.js`.
 *(To stop, double-click [`stop_server.bat`](file:///C:/Users/maria/.gemini/antigravity/scratch/paypal_iot_checkout/stop_server.bat)).*
 
 ### 2. Open in Browser
@@ -72,8 +87,13 @@ Open `http://localhost:3000` (or `http://<YOUR_IP>:3000` on your mobile phone on
 
 | Component | Pin | ESP32 GPIO | Description |
 |:---|:---|:---|:---|
-| **Active/Passive Buzzer** | **(+) Longer Leg** | **D14 (GPIO 14)** | Audio Chimes for Scans & Gates |
+| **Active/Passive Buzzer** | **(+) Longer Leg** | **D14 (GPIO 14)** | Audio Chimes for Scans & Sirens |
 | **Active/Passive Buzzer** | **(-) Shorter Leg** | **GND** | Ground |
 | **Magnetic Lock** | **Onboard Blue LED** | **GPIO 2** | OFF = Locked, ON = Gate Unlocked / Released |
 
 Firmware source: [`firmware/paypal_esp32_gate.ino`](file:///C:/Users/maria/.gemini/antigravity/scratch/paypal_iot_checkout/firmware/paypal_esp32_gate.ino).
+
+---
+
+## 📜 License
+This project is open-source and licensed under the **[MIT License](LICENSE)** (Approved by the Open Source Initiative - OSI).
